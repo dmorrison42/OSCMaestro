@@ -11,4 +11,7 @@
     <PackageReference Include="CoreOSC" Version="1.0.0" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <PublishSingleFile>true</PublishSingleFile>
+  </PropertyGroup>
 </Project>
