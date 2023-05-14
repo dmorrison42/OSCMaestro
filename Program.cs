@@ -1,20 +1,41 @@
 ﻿using CoreOSC;
-using CoreOSC.IO;
+using CoreOSC.Types;
 using System.Net.Sockets;
 
 
-using (var udpClient = new UdpClient("192.168.2.41", 2223)) {
-    async Task<object[]> Query(string address) {
-        var message = new OscMessage(new Address(address));
+if (args.Length != 2) {
+    args = new string[] {"set", "test.txt"};
+}
 
-        await udpClient.SendMessageAsync(message);
-        var response = await udpClient.ReceiveMessageAsync();
-        return response.Arguments.ToArray();
+var setMode = args[0] == "set";
+var fileName = args[1];
+
+var messages = new List<Task<Byte[]>>();
+if (setMode) {
+    BytesConverter BytesConverter = new BytesConverter();
+    OscMessageConverter MessageConverter = new OscMessageConverter();
+    foreach (var line in File.ReadAllLines(fileName).ToList()) {
+        messages.Add(Task.Run(() => {
+            var data = line.Split(".");
+            var value = string.Join('.', data.Skip(2));
+            var message = new OscMessage(new Address($"/{data[0]}/{data[1]}"), new object[] { value });
+            var dWords = MessageConverter.Serialize(message);
+            _ = BytesConverter.Deserialize(dWords, out var bytes);
+            return bytes.ToArray();
+        }));
+    }
+}
+
+
+using (var udpClient = new UdpClient("192.168.2.41", 2223)) {
+    BytesConverter BytesConverter = new BytesConverter();
+    async Task<IEnumerable<DWord>> Query(byte[] message) {
+        await udpClient.SendAsync(message, message.Length);
+        var result = await udpClient.ReceiveAsync();
+        return BytesConverter.Serialize(result.Buffer);
     }
 
-    var channels = await Query("/ch");
-    foreach (var channel in channels) {
-        var level = (await Query($"/ch/{channel}/fdr")).First();
-        Console.WriteLine($"{channel}: {level}");
+    foreach (var message in messages) {
+        await Query(await message);
     }
 }
