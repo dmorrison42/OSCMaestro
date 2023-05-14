@@ -1,4 +1,4 @@
-﻿using CoreOSC;
+using CoreOSC;
 using CoreOSC.Types;
 using System.Net.Sockets;
 
@@ -29,7 +29,8 @@ using (var udpClient = new UdpClient("192.168.2.41", 2223)) {
 
     if (setMode) {
         var messages = File.ReadAllLines(fileName)
-            .Select(line => Task.Run(() => ConvertMessage(line)));
+            .Select(line => Task.Run(() => ConvertMessage(line)))
+            .ToList();
         foreach (var message in messages) {
             await Query(await message);
         }
