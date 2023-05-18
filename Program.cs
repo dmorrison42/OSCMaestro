@@ -29,22 +29,23 @@ using (var udpClient = new UdpClient("192.168.2.41", 2223)) {
         _ = BytesConverter.Deserialize(dWords, out var bytes);
         return bytes.ToArray();
     }
-    OscMessage ParseMessage(IEnumerable<DWord> dWords) {
+    OscMessage ParseMessage(byte[] data) {
+            var dWords = BytesConverter.Serialize(data);
             MessageConverter.Deserialize(dWords, out var value);
             return value;
     }
-    async Task<IEnumerable<DWord>> Query(byte[] message) {
-        await udpClient.SendAsync(message, message.Length);
-        var result = await udpClient.ReceiveAsync();
-        return BytesConverter.Serialize(result.Buffer);
+    byte[] Query(byte[] message) {
+        udpClient.Send(message, message.Length);
+        var sender = new System.Net.IPEndPoint(System.Net.IPAddress.Any, 0);
+        var result = udpClient.ReceiveAsync();
+        result.Wait();
+        return result.Result.Buffer;
     }
 
     if (setMode) {
-        var messages = File.ReadAllLines(fileName)
-            .Select(line => Task.Run(() => ConvertMessage(line)))
-            .ToList();
+        var messages = File.ReadAllLines(fileName);
         foreach (var message in messages) {
-            await Query(await message);
+            Query(System.Text.Encoding.UTF8.GetBytes(message));
         }
     } else {
         var RootTypes = new [] {
@@ -61,7 +62,7 @@ using (var udpClient = new UdpClient("192.168.2.41", 2223)) {
             .ToList();
         var counts = new List<Task<OscMessage>>();
         foreach (var root in rootTypeMessages) {
-            var data = await Query(await root);
+            var data = Query(await root);
             counts.Add(Task.Run(() => ParseMessage(data)));
         }
         var queryMessages = new List<Task<byte[]>>();
@@ -72,15 +73,12 @@ using (var udpClient = new UdpClient("192.168.2.41", 2223)) {
         }
         Task.WaitAll(counts.ToArray());
 
-        var responses = new List<Task<string>>();
+        var responses = new List<byte>();
         foreach (var message in queryMessages) {
-            var result = await Query(await message);
-            responses.Add(Task.Run(() => {
-                var message = ParseMessage(result);
-                var address = message.Address.Value.Split("/");
-                return $"/{address[1]}.{address[2]}.{message.Arguments.First()}";
-            }));
+            var result = Query(await message);
+            responses.AddRange(result);
+            responses.Add((byte)'\n');
         }
-        File.WriteAllLines(fileName, await Task.WhenAll(responses.ToArray()));
+        File.WriteAllBytes(fileName, responses.ToArray());
     }
 }
