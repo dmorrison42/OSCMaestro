@@ -1,84 +1,50 @@
-﻿using CoreOSC;
-using CoreOSC.Types;
-using System.Net.Sockets;
+﻿using CommandLine;
 
-if (args.Length != 2) {
-    args = new string[] {"set", "test.txt"};
-}
+Parser.Default
+    .ParseArguments<Options>(args)
+    .WithParsed(o => {
+        if (o.Verbose) {
+            Console.WriteLine("OSCTree (name should be changed) v0.1");
+        }
+        var wing = o.SkipWing ? null : new Wing("192.168.2.41", 2223, o.VerboseWing);
 
-var setMode = args[0] == "set";
-var fileName = args[1];
+        var server = new MidiServer(o.Verbose);
 
-BytesConverter BytesConverter = new BytesConverter();
-OscMessageConverter MessageConverter = new OscMessageConverter();
+        using (wing)
+        using (server) {
+            IReadOnlyList<string> preSaveMessages = new string[] {};
 
-using (var udpClient = new UdpClient("192.168.2.41", 2223)) {
-    byte[] ConvertMessage(string line) {
-        var data = line.Split(".");
-        var value = string.Join('.', data.Skip(2));
-        var address = new Address($"{data[0]}/{data[1]}");
-        if (data[1] == "") {
-            address = new Address($"{data[0]}");
-        }
-        var args = new object[] { };
-        if (value != "") {
-            args = new object[] { value };
-        }
-        var message = new OscMessage(address, args);
-        var dWords = MessageConverter.Serialize(message);
-        _ = BytesConverter.Deserialize(dWords, out var bytes);
-        return bytes.ToArray();
-    }
-    OscMessage ParseMessage(byte[] data) {
-            var dWords = BytesConverter.Serialize(data);
-            MessageConverter.Deserialize(dWords, out var value);
-            return value;
-    }
-    byte[] Query(byte[] message) {
-        udpClient.Send(message, message.Length);
-        var sender = new System.Net.IPEndPoint(System.Net.IPAddress.Any, 0);
-        var result = udpClient.ReceiveAsync();
-        result.Wait();
-        return result.Result.Buffer;
-    }
+            server.StartSave += () => {
+                preSaveMessages = wing?.GetSnapshot().MessagesUTF8 ?? new string[] {};
+            };
 
-    if (setMode) {
-        var messages = File.ReadAllLines(fileName);
-        foreach (var message in messages) {
-            Query(System.Text.Encoding.UTF8.GetBytes(message));
-        }
-    } else {
-        var RootTypes = new [] {
-            "ch",
-            "aux",
-            "bus",
-            "main",
-            "mtx",
-            "dca",
-            "fx",
-        };
-        var rootTypeMessages = RootTypes
-            .Select(type => Task.Run(() => ConvertMessage($"/{type}..")))
-            .ToList();
-        var counts = new List<Task<OscMessage>>();
-        foreach (var root in rootTypeMessages) {
-            var data = Query(await root);
-            counts.Add(Task.Run(() => ParseMessage(data)));
-        }
-        var queryMessages = new List<Task<byte[]>>();
-        foreach (var count in counts) {
-            var countMessage = await count;
-            queryMessages.AddRange(countMessage.Arguments.Select(i => Task.Run(
-                () => ConvertMessage($"{countMessage.Address.Value}.{i}.*"))));
-        }
-        Task.WaitAll(counts.ToArray());
+            server.Save += (midi) => {
+                if (o.Verbose) {
+                    Console.WriteLine($"Saving snapshot to {midi}.snapshot");
+                }
+                var postSaveMessages = wing?.GetSnapshot().MessagesUTF8 ?? new string[] {};
 
-        var responses = new List<byte>();
-        foreach (var message in queryMessages) {
-            var result = Query(await message);
-            responses.AddRange(result);
-            responses.Add((byte)'\n');
+                var differentMessages = postSaveMessages.Where(m => preSaveMessages?.Contains(m) == false).ToArray();
+
+                if (differentMessages.Any()) {
+                    new Snapshot(differentMessages)
+                        .ToFile($"{midi}.snapshot");
+                } else {
+                    new Snapshot(postSaveMessages)
+                        .ToFile($"{midi}.snapshot");
+                }
+            };
+
+            server.Restore += (midi) => {
+                if (o.Verbose) {
+                    Console.WriteLine($"Restoring from snapshot {midi}.snapshot");
+                }
+                var snapshot = new Snapshot($"{midi}.snapshot");
+                wing?.SetSnapshot(snapshot);
+            };
+
+            for (;;) {
+                Thread.Sleep(1000);
+            }
         }
-        File.WriteAllBytes(fileName, responses.ToArray());
-    }
-}
+    });
