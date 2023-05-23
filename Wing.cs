@@ -57,15 +57,19 @@ internal class Wing : IDisposable {
 
     private byte[] Query(byte[] message) {
         if (Verbose) Console.WriteLine($"wing-> {System.Text.Encoding.UTF8.GetString(message)}");
-        m_UdpClient.Send(message, message.Length);
-        var sender = new System.Net.IPEndPoint(System.Net.IPAddress.Any, 0);
-        var result = m_UdpClient.ReceiveAsync();
-        result.Wait();
-
-        var resp = result.Result.Buffer;
-        if (Verbose) Console.WriteLine($"wing<- {System.Text.Encoding.UTF8.GetString(resp)}");
-
-        return resp;
+        for (var i = 0; i < 5; i++) {
+            m_UdpClient.Send(message, message.Length);
+            var result = m_UdpClient.ReceiveAsync();
+            result.Wait(500);
+            if (result.IsCompletedSuccessfully) {
+                var resp = result.Result.Buffer;
+                if (Verbose) Console.WriteLine($"wing<- {System.Text.Encoding.UTF8.GetString(resp)}");
+                return resp;
+            } else {
+                Console.WriteLine($"WARNING: Failed to read from {m_UdpClient.Client.RemoteEndPoint}");
+            }
+        }
+        throw new TimeoutException(m_UdpClient.Client.RemoteEndPoint?.ToString());
     }
 
     public Snapshot GetSnapshot() {
