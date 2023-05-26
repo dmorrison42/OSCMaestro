@@ -8,10 +8,10 @@ internal class MidiServer : IDisposable {
     }
 
     private Mode m_Mode = Mode.Listen;
-    private VirtualDevice m_Device;
+    private InputDevice m_Device;
 
     public bool Verbose { get; set; }
-    public string DeviceName => "WINGSnapshots";
+    public string DeviceName { get; }
 
     public delegate void MidiServerEventHandler(string midi);
     public delegate void MidiServerStartEventHandler();
@@ -20,13 +20,14 @@ internal class MidiServer : IDisposable {
     public event MidiServerStartEventHandler? StartSave;
     public event MidiServerEventHandler? Restore;
 
-    public MidiServer(bool verbose) {
+    public MidiServer(string DeviceName = Options.MidiDeviceDefault, bool verbose = false) {
         Verbose = verbose;
 
-        // TODO: Make this variable
-        m_Device = VirtualDevice.Create(DeviceName);
+        m_Device = InputDevice.GetAll()
+            .Where(d => d.Name == DeviceName || d.Name == $"IAC Driver {DeviceName}")
+            .FirstOrDefault() ?? VirtualDevice.Create(DeviceName).InputDevice;
 
-        m_Device.InputDevice.EventReceived += (_, e) => {
+        m_Device.EventReceived += (_, e) => {
             if (e.Event is NoteOnEvent noe) {
                 var midiString = $"ch{noe.Channel} #{noe.NoteNumber} v{noe.Velocity}";
                 if (Verbose) {
@@ -63,7 +64,7 @@ internal class MidiServer : IDisposable {
             }
         };
 
-        m_Device.InputDevice.StartEventsListening();
+        m_Device.StartEventsListening();
         if (Verbose) {
             Console.WriteLine($"Started virtual MIDI device: {DeviceName}");
         }

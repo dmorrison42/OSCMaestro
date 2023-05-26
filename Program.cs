@@ -8,7 +8,7 @@ Parser.Default
         }
         var wing = o.SkipWing ? null : new Wing("192.168.2.41", 2223, o.VerboseWing);
 
-        var server = new MidiServer(o.Verbose);
+        var server = new MidiServer(o.MidiDevice, o.Verbose);
 
         using (wing)
         using (server) {
