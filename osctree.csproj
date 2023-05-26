@@ -13,6 +13,12 @@
     <PackageReference Include="Melanchall.DryWetMidi" Version="6.1.4" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="OSC Tree.app\**">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+</ItemGroup>
+
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
