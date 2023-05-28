@@ -4,7 +4,7 @@ Parser.Default
     .ParseArguments<Options>(args)
     .WithParsed(o => {
         if (o.Verbose) {
-            Console.WriteLine("OSCTree (name should be changed) v0.1");
+            Console.WriteLine("OSCTree (name should be changed) v0.2");
         }
         var wing = o.SkipWing ? null : new Wing("192.168.2.41", 2223, o.VerboseWing);
 
